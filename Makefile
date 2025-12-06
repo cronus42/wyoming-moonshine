@@ -4,20 +4,28 @@ CONTAINER_NAME ?= wyoming-moonshine
 PORT ?= 10300
 PYTHON ?= python3.13
 
-.PHONY: help setup build deploy
+.PHONY: help setup dev-install test build deploy
 
 # Default target
 help: ## Show this help message
-	@echo "Home Assistant Moonshine Wyoming server"
-	@echo "Usage: make [target]"
-	@echo ""
-	@echo "Available targets:"
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "  %-10s %s\\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@printf "Home Assistant Moonshine Wyoming server\n"
+	@printf "Usage: make [target]\n\n"
+	@printf "Available targets:\n"
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
+		sed -E 's/^([a-zA-Z0-9_-]+):.*?## (.*)$$/  \1\t\2/'
 
-# Create a local Python virtualenv and install dependencies
-setup: ## Create a local Python virtualenv and install dependencies
+# Create a local Python virtualenv and install runtime dependencies
+setup: ## Create a local Python virtualenv and install runtime dependencies
 	$(PYTHON) -m venv .venv
 	. .venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt
+
+# Install development dependencies into the virtualenv
+dev-install: ## Install development dependencies into the virtualenv
+	. .venv/bin/activate && pip install -r requirements-dev.txt
+
+# Run the test suite using pytest in the virtualenv
+test: ## Run the test suite with pytest
+	. .venv/bin/activate && PYTHONPATH=. pytest
 
 # Build the Docker image for the Moonshine Wyoming ASR server
 build: ## Build the Docker image for the Moonshine Wyoming ASR server

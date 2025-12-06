@@ -11,7 +11,7 @@ import logging
 import tempfile
 import wave
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import moonshine_onnx
 from wyoming.audio import AudioChunk, AudioStart
@@ -30,13 +30,26 @@ class MoonshineAsrHandler(AsyncEventHandler):
     send a single ``transcript`` event back with the recognized text.
     """
 
-    def __init__(self, model_name: str, language: Optional[str] = None) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        reader,
+        writer,
+        model_name: str,
+        language: Optional[str] = None,
+        *,
+        max_seconds: Optional[float] = None,
+        moonshine_options: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        # AsyncEventHandler in wyoming 1.8 expects reader/writer.
+        super().__init__(reader, writer)
         self.model_name = model_name
         self.language = language or "en"
+        self.max_seconds = max_seconds
+        self._moonshine_options: Dict[str, Any] = moonshine_options or {}
 
         self._audio_bytes = bytearray()
         self._audio_format: Optional[AudioStart] = None
+        self._too_long = False
 
     async def handle_event(self, event: Event) -> bool:  # type: ignore[override]
         """Main event loop for a single Wyoming connection.
@@ -60,6 +73,7 @@ class MoonshineAsrHandler(AsyncEventHandler):
             # configured model. This can be extended later.
             self._audio_bytes.clear()
             self._audio_format = None
+            self._too_long = False
             _LOGGER.debug("Received transcribe request: %s", event.data)
             return True
 
@@ -81,6 +95,7 @@ class MoonshineAsrHandler(AsyncEventHandler):
 
             self._audio_format = audio_start
             self._audio_bytes.clear()
+            self._too_long = False
             _LOGGER.debug("audio-start: resetting buffer")
             return True
 
@@ -89,14 +104,45 @@ class MoonshineAsrHandler(AsyncEventHandler):
                 _LOGGER.debug("audio-chunk before audio-start; ignoring")
                 return True
 
+            if self._too_long:
+                # Already over max_seconds; ignore additional audio.
+                return True
+
             chunk = AudioChunk.from_event(event)
             self._audio_bytes.extend(chunk.audio)
+
+            if self.max_seconds is not None and self._audio_format is not None:
+                rate = self._audio_format.rate or 16000
+                width = self._audio_format.width or 2
+                channels = self._audio_format.channels or 1
+                bytes_per_second = rate * width * channels
+                if bytes_per_second > 0:
+                    duration = len(self._audio_bytes) / bytes_per_second
+                    if duration > self.max_seconds:
+                        _LOGGER.warning(
+                            "Audio longer than max_seconds=%s (approx %.2fs); "
+                            "will return empty transcript.",
+                            self.max_seconds,
+                            duration,
+                        )
+                        self._too_long = True
+
             return True
 
         if event.type == "audio-stop":
-            if not self._audio_bytes:
-                _LOGGER.debug("audio-stop with empty buffer; sending empty transcript")
+            if not self._audio_bytes or self._too_long:
+                if self._too_long:
+                    _LOGGER.debug(
+                        "audio-stop with over-long audio; sending empty transcript"
+                    )
+                else:
+                    _LOGGER.debug(
+                        "audio-stop with empty buffer; sending empty transcript"
+                    )
+
                 await self.write_event(Transcript(text="", language=self.language).event())
+                self._audio_bytes.clear()
+                self._too_long = False
                 return True
 
             text = await self._run_transcription()
@@ -107,6 +153,7 @@ class MoonshineAsrHandler(AsyncEventHandler):
 
             # Clear for next utterance on same connection
             self._audio_bytes.clear()
+            self._too_long = False
             return True
 
         _LOGGER.debug("Ignoring unsupported event type: %s", event.type)
