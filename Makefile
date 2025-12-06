@@ -4,7 +4,7 @@ CONTAINER_NAME ?= wyoming-moonshine
 PORT ?= 10300
 PYTHON ?= python3.13
 
-.PHONY: help setup dev-install test build deploy
+.PHONY: help setup dev-install test build deploy release
 
 # Default target
 help: ## Show this help message
@@ -36,3 +36,30 @@ build: ## Build the Docker image for the Moonshine Wyoming ASR server
 #   make deploy IMAGE_NAME=wyoming-moonshine PORT=10300
 deploy: ## Run the Docker container exposing the Wyoming TCP port on $(PORT)
 	docker run -d --name $(CONTAINER_NAME) -p $(PORT):10300 $(IMAGE_NAME):$(IMAGE_TAG)
+
+# Create and push a versioned release tag
+# Usage: make release VERSION=v0.1.0
+release: ## Create and push a git tag to trigger Docker image publish (requires VERSION=vX.Y.Z)
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Error: VERSION is required. Usage: make release VERSION=v0.1.0"; \
+		exit 1; \
+	fi
+	@echo "Creating release $(VERSION)..."
+	@if git rev-parse "$(VERSION)" >/dev/null 2>&1; then \
+		echo "Error: Tag $(VERSION) already exists"; \
+		exit 1; \
+	fi
+	@if ! git diff-index --quiet HEAD --; then \
+		echo "Error: Working directory has uncommitted changes. Commit or stash them first."; \
+		exit 1; \
+	fi
+	@echo "Ensuring local master is up to date..."
+	git checkout master
+	git pull origin master
+	@echo "Running tests before release..."
+	$(MAKE) test
+	@echo "Creating annotated tag $(VERSION)..."
+	git tag -a "$(VERSION)" -m "$(VERSION)"
+	@echo "Pushing tag to origin..."
+	git push origin "$(VERSION)"
+	@echo "Release $(VERSION) complete. Check GitHub Actions for Docker image build."

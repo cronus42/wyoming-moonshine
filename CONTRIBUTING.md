@@ -47,3 +47,22 @@ All tests should pass before you open a pull request.
 - Add or update tests when you change behavior.
 - Ensure `pytest` passes locally before opening or updating a PR.
 - Keep documentation up to date if you change configuration, flags, or usage.
+
+## Releases
+
+Releases are driven by git tags. Pushing a tag like `v0.1.0` triggers the
+`docker-publish` GitHub Actions workflow, which builds and publishes Docker
+images to GHCR.
+
+To cut a release from an up-to-date `master` branch:
+
+```bash
+make release VERSION=v0.1.0
+```
+
+This will:
+- Verify there are no uncommitted changes
+- Pull the latest `master`
+- Run the test suite
+- Create an annotated tag `v0.1.0`
+- Push the tag to `origin` so GitHub Actions can build/publish images
