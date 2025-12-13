@@ -43,6 +43,18 @@ A minimal image is published to GitHub Container Registry:
 
 - Image: `ghcr.io/cronus42/wyoming-moonshine:latest`
 
+### Environment variables
+
+- `WYOMING_URI` (default: `tcp://0.0.0.0:10300`)
+- `MOONSHINE_MODEL` (default: `moonshine/tiny`)
+- `MOONSHINE_LANGUAGE` (default: `en`)
+- `MOONSHINE_LOG_LEVEL` (default: `INFO`)
+- `HF_HOME` (default: `/data/hf`)
+- `HF_TOKEN` (optional)
+- `OFFLINE_AFTER_STARTUP` (default: `true`)
+
+If `OFFLINE_AFTER_STARTUP=true`, the container will do a short warmup transcription at startup (network allowed), then set `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1` for the running server.
+
 ### Build and push (for development)
 
 ```bash
@@ -55,9 +67,9 @@ docker tag wyoming-moonshine:latest "$IMAGE"
 docker push "$IMAGE"
 ```
 
-## Running on a remote host with Docker Compose
+### Running on a remote host with Docker Compose
 
-On the host that will run the ASR server (e.g. `sanctuarymoon.local`), add a service similar to:
+On the host that will run the ASR server, add a service similar to:
 
 ```yaml
 services:
@@ -65,13 +77,16 @@ services:
     image: ghcr.io/cronus42/wyoming-moonshine:latest
     container_name: wyoming-moonshine
     restart: unless-stopped
-    command:
-      - "--uri"
-      - "tcp://0.0.0.0:10300"
-      - "--model"
-      - "moonshine/tiny"
-      - "--language"
-      - "en"
+    environment:
+      WYOMING_URI: tcp://0.0.0.0:10300
+      MOONSHINE_MODEL: moonshine/tiny
+      MOONSHINE_LANGUAGE: en
+      MOONSHINE_LOG_LEVEL: INFO
+      OFFLINE_AFTER_STARTUP: "true"
+      HF_HOME: /data/hf
+      # HF_TOKEN: "..."  # optional
+    volumes:
+      - /srv/wyoming-moonshine:/data
     ports:
       - "10300:10300"  # hostPort:containerPort
 ```

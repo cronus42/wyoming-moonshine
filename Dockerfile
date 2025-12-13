@@ -15,9 +15,11 @@ RUN apt-get update \
     && apt-get purge -y git \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
+
 COPY wyoming_moonshine ./wyoming_moonshine
+COPY run.sh /run.sh
+RUN chmod +x /run.sh
 
 EXPOSE 10300
 
-ENTRYPOINT ["python", "-m", "wyoming_moonshine"]
-CMD ["--uri", "tcp://0.0.0.0:10300", "--model", "moonshine/tiny", "--language", "en"]
+ENTRYPOINT ["/run.sh"]
